@@ -11,6 +11,8 @@ The implementation focuses on the backend invariants behind the required edge ca
 
 Regular enrollment, signup, cancellation, waitlists, and scheduled reconciliation are outside the scope.
 
+Time spent: 3+ hours.
+
 ## Run locally
 
 Requirements: Node.js 22+, pnpm, and Docker.
