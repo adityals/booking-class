@@ -41,4 +41,7 @@ yarn-error.log*
 next-env.d.ts
 
 # agent
-./.agents/skills
+.agents/skills/
+
+# take-home brief, local only
+docs/requirement.txt
