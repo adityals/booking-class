@@ -148,13 +148,7 @@ export class BookingRepository {
         throw new Error(`booking ${bookingId} is not payable`);
       }
 
-      let claimed = await this.claimSeat(tx, booking.trialClassId);
-      if (!claimed) {
-        // The class only *appears* full: a hold whose capture never resolved may be
-        // squatting a seat. Release those, then give the claim exactly one more go.
-        await this.releaseStaleHolds(booking.trialClassId, tx);
-        claimed = await this.claimSeat(tx, booking.trialClassId);
-      }
+      const claimed = await this.claimSeatWithRecovery(tx, booking.trialClassId);
       if (!claimed) {
         const unavailable = await tx.query<BookingRow>(
           `UPDATE bookings
@@ -288,6 +282,18 @@ export class BookingRepository {
        ORDER BY a.id`,
     );
     return result.rows.map(mapAttempt);
+  }
+
+  private async claimSeatWithRecovery(
+    tx: PoolClient,
+    trialClassId: number,
+  ): Promise<boolean> {
+    let claimed = await this.claimSeat(tx, trialClassId);
+    if (!claimed) {
+      await this.releaseStaleHolds(trialClassId, tx);
+      claimed = await this.claimSeat(tx, trialClassId);
+    }
+    return claimed;
   }
 
   private async claimSeat(tx: PoolClient, trialClassId: number): Promise<boolean> {
