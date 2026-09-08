@@ -81,7 +81,12 @@ function toRosterBooking(row: RosterRow): RosterBooking {
     parentName: row.parent_name,
     status: row.status,
     amountCents: Number(row.amount_cents),
-    heldAt: row.held_at === null ? null : row.held_at instanceof Date ? row.held_at : new Date(row.held_at),
+    heldAt:
+      row.held_at === null
+        ? null
+        : row.held_at instanceof Date
+          ? row.held_at
+          : new Date(row.held_at),
     createdAt: row.created_at instanceof Date ? row.created_at : new Date(row.created_at),
     attemptStatus: row.attempt_status,
     attemptError: row.attempt_error,
@@ -107,6 +112,7 @@ export class TrialClassReadRepository {
       FROM trial_classes
       WHERE id = $1
     `, [trialClassId]);
+
     const classRow = classResult.rows[0];
     if (!classRow) {
       return null;
@@ -130,12 +136,14 @@ export class TrialClassReadRepository {
       ORDER BY CASE WHEN b.status = 'confirmed' THEN 0 ELSE 1 END,
                b.created_at ASC, b.id ASC
     `, [trialClassId]);
+
     const consistencyResult = await this.pool.query<{ occupying_count: number | string }>(`
       SELECT COUNT(*)::int AS occupying_count
       FROM bookings
       WHERE trial_class_id = $1 AND status IN ('seat_held', 'confirmed')
     `, [trialClassId]);
     const rowCount = Number(consistencyResult.rows[0]?.occupying_count ?? 0);
+
     const trialClass = toClass(classRow);
     const bookings = rosterResult.rows.map(toRosterBooking);
     const confirmed = bookings.filter((booking) => booking.status === "confirmed");

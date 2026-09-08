@@ -15,7 +15,13 @@ export default function AdminLoginPage() {
           </label>
           <label className={styles.field} htmlFor="password">
             Password
-            <input className={styles.input} id="password" name="password" type="password" required />
+            <input
+              className={styles.input}
+              id="password"
+              name="password"
+              type="password"
+              required
+            />
           </label>
           <button className={styles.button} type="submit">Log in</button>
         </form>

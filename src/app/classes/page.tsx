@@ -51,10 +51,14 @@ export default async function ClassesPage() {
                     </Link>
                   )}
                   <span className={styles.meta}>{formatStart(trialClass.startsAt)}</span>
-                  <span className={styles.meta}>{trialClass.seatsTaken}/{trialClass.capacity} seats taken</span>
+                  <span className={styles.meta}>
+                    {trialClass.seatsTaken}/{trialClass.capacity} seats taken
+                  </span>
                 </div>
                 <div className={styles.actions}>
-                  <span className={styles.meta}>{full ? "Full" : `${trialClass.availableSeats} available`}</span>
+                  <span className={styles.meta}>
+                    {full ? "Full" : `${trialClass.availableSeats} available`}
+                  </span>
                   <span className={styles.meta}>{formatPrice(trialClass.priceCents)}</span>
                 </div>
               </li>

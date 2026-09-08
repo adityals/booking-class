@@ -12,6 +12,7 @@ export async function POST(request: Request): Promise<Response> {
   const form = await request.formData();
   const username = String(form.get("username") ?? "");
   const password = String(form.get("password") ?? "");
+
   const expectedUsername = process.env.ADMIN_USERNAME || "admin";
   const expectedPassword = process.env.ADMIN_PASSWORD || "admin";
   if (username !== expectedUsername || password !== expectedPassword) {
@@ -19,6 +20,10 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const response = NextResponse.redirect(new URL("/admin", request.url), 303);
-  response.cookies.set(SESSION_COOKIE, await signSession({ kind: "admin" }), cookieOptions);
+  response.cookies.set(
+    SESSION_COOKIE,
+    await signSession({ kind: "admin" }),
+    cookieOptions,
+  );
   return response;
 }

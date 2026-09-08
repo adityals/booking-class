@@ -12,6 +12,7 @@ export async function GET(
   if (!Number.isSafeInteger(bookingId) || bookingId <= 0) {
     return NextResponse.json({ error: "invalid_booking" }, { status: 400 });
   }
+
   const booking = await new BookingReadRepository(getPool()).findForParent(
     bookingId,
     session.parentId,
@@ -19,5 +20,6 @@ export async function GET(
   if (!booking) {
     return NextResponse.json({ error: "booking_not_found" }, { status: 404 });
   }
+
   return NextResponse.json(booking);
 }

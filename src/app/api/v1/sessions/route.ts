@@ -24,6 +24,10 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const response = NextResponse.redirect(new URL("/classes", request.url), 303);
-  response.cookies.set(SESSION_COOKIE, await signSession({ kind: "parent", parentId: id }), cookieOptions);
+  response.cookies.set(
+    SESSION_COOKIE,
+    await signSession({ kind: "parent", parentId: id }),
+    cookieOptions,
+  );
   return response;
 }

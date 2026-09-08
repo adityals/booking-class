@@ -349,16 +349,15 @@ booking rows, so the seed cannot itself violate the capacity invariant.
 
 | class | state | purpose |
 | --- | --- | --- |
-| C1 | 0/4 | class with available seats |
-| C2 | 3/4 confirmed | last-seat race target |
-| C3 | 4/4 confirmed | full — shown disabled |
+| C1 | 1/4 | available seats; includes a stale hold for sweep testing |
+| C2 | 3/4 confirmed | last-seat race and duplicate-booking target |
+| C3 | 1/4 confirmed | another available class |
 | C4 | 1/4 | holds the `payment_failed` booking |
 
-Plus a student already confirmed in C2 (the duplicate-attempt precondition — a
-rejected duplicate is never stored, since creation returns the existing booking), a
-`payment_failed` booking with its failed attempt, a `seat_unavailable` booking with
-**no** payment attempt (proving the loser is never charged), and one stale `seat_held`
-booking with an old `held_at` so the lazy release path is demonstrable.
+The seed includes a student already confirmed in C2 for the duplicate-booking
+precondition, a `payment_failed` booking with its failed attempt, and one stale
+`seat_held` booking with an old `held_at`. The stale hold is extra recovery data; it
+does not replace any required reviewer case.
 
 ## Build Order
 

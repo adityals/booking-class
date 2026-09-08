@@ -85,12 +85,21 @@ UPDATE trial_classes
 SET seats_taken = seats_taken + 1
 WHERE id = $1 AND seats_taken < capacity
 RETURNING seats_taken;
-```
+## Manual verification
 
-PostgreSQL serializes competing updates on the class row. One request gets the last seat. The other gets zero returned rows, becomes `seat_unavailable`, and never calls the payment provider.
+Manual cases to demonstrate:
 
-A capture failure releases the seat and changes the booking to `payment_failed`. An unknown capture keeps the seat held and reuses the same payment-attempt idempotency key on retry.
-
+1. Log in as `alice` and open the available Science class.
+2. To demonstrate a duplicate booking, open Math (class `2`) and choose Ava. Ava
+   already has a confirmed booking for that class, so the request returns the existing
+   booking instead of creating another one.
+3. Submit a payment with the mock outcome set to **Decline**; verify no roster entry
+   and restored capacity.
+4. Open the Math class in two tabs with two different children and submit both
+   payments for the final seat. Exactly one becomes confirmed.
+5. Log in as `admin` and inspect the confirmed and operational roster sections.
+6. Stop PostgreSQL and reload a class page to see the 500 error state; restart it and
+   use the retry path.
 ## Backend design
 
 ### Data model

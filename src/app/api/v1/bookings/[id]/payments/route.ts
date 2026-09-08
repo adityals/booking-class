@@ -12,9 +12,7 @@ export async function POST(
 ): Promise<Response> {
   const session = await requireParent();
   const { id } = await params;
-
   const bookingId = Number(id);
-
   if (!Number.isSafeInteger(bookingId) || bookingId <= 0) {
     return NextResponse.json({ error: "invalid_booking" }, { status: 400 });
   }
@@ -35,17 +33,22 @@ export async function POST(
       : undefined;
 
   try {
-    const service = new BookingService(new BookingRepository(getPool()), new HttpPaymentService());
-    const booking = await service.pay(bookingId, force);
-    if (booking.status === "seat_held") {
+    const service = new BookingService(
+      new BookingRepository(getPool()),
+      new HttpPaymentService(),
+    );
+    const paid = await service.pay(bookingId, force);
+
+    if (paid.status === "seat_held") {
       return new Response(null, {
         status: 303,
-        headers: { Location: `/bookings/${booking.id}?payment=in_progress` },
+        headers: { Location: `/bookings/${paid.id}?payment=in_progress` },
       });
     }
+
     return new Response(null, {
       status: 303,
-      headers: { Location: `/bookings/${booking.id}` },
+      headers: { Location: `/bookings/${paid.id}` },
     });
   } catch {
     return Response.redirect(new URL("/500", request.url), 303);

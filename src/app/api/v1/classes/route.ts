@@ -8,6 +8,7 @@ export async function GET(): Promise<Response> {
   try {
     await requireParent();
     const classes = await new TrialClassReadRepository(getPool()).listClasses();
+
     return Response.json({ classes });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

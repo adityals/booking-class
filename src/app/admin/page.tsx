@@ -32,9 +32,14 @@ export default async function AdminPage() {
                 <Link className={styles.itemTitle} href={`/admin/classes/${trialClass.id}/roster`}>
                   {trialClass.subject}
                 </Link>
-                <span className={styles.meta}>{trialClass.seatsTaken}/{trialClass.capacity} seats taken</span>
+                <span className={styles.meta}>
+                  {trialClass.seatsTaken}/{trialClass.capacity} seats taken
+                </span>
               </div>
-              <Link className={`${styles.linkButton} ${styles.secondary}`} href={`/admin/classes/${trialClass.id}/roster`}>
+              <Link
+                className={`${styles.linkButton} ${styles.secondary}`}
+                href={`/admin/classes/${trialClass.id}/roster`}
+              >
                 View roster
               </Link>
             </li>

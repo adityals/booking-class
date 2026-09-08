@@ -28,11 +28,15 @@ OVERRIDING SYSTEM VALUE VALUES
   (3, 3, 2, 'confirmed', 2500, NULL),
   (4, 4, 3, 'confirmed', 3000, NULL),
   (5, 5, 4, 'payment_failed', 2500, NULL),
-  (6, 2, 1, 'seat_held', 2500, now() - interval '2 minutes');
+  (6, 2, 1, 'seat_held', 2500, now() - interval '5 minutes');
 
-INSERT INTO payment_attempts (id, booking_id, status, amount_cents, idempotency_key, error, settled_at)
+INSERT INTO payment_attempts (id, booking_id, status, amount_cents, idempotency_key, provider_ref, error, settled_at)
 OVERRIDING SYSTEM VALUE VALUES
-  (1, 5, 'failed', 2500, 'seed-payment-failed-1', 'seed decline', now());
+  (1, 1, 'succeeded', 2500, 'seed-payment-1', 'seed-charge-1', NULL, now()),
+  (2, 2, 'succeeded', 2500, 'seed-payment-2', 'seed-charge-2', NULL, now()),
+  (3, 3, 'succeeded', 2500, 'seed-payment-3', 'seed-charge-3', NULL, now()),
+  (4, 4, 'succeeded', 3000, 'seed-payment-4', 'seed-charge-4', NULL, now()),
+  (5, 5, 'failed', 2500, 'seed-payment-5', NULL, 'seed decline', now());
 
 UPDATE trial_classes c
 SET seats_taken = (

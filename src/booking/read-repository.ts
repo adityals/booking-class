@@ -44,10 +44,12 @@ export class BookingReadRepository {
        WHERE b.id = $1 AND s.parent_id = $2`,
       [bookingId, parentId],
     );
+
     const row = result.rows[0];
     if (!row) {
       return null;
     }
+
     return {
       id: row.id,
       studentId: row.student_id,

@@ -6,6 +6,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   if (path === "/login" || path === "/admin/login") {
     return NextResponse.next();
   }
+
   const adminArea =
     path === "/admin" ||
     path.startsWith("/admin/") ||
@@ -13,6 +14,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     path.startsWith("/api/v1/admin/") ||
     path === "/api/v1/internal" ||
     path.startsWith("/api/v1/internal/");
+
   const value = request.cookies.get(SESSION_COOKIE)?.value;
   const session = value ? await verifySessionValue(value) : null;
   const allowed = adminArea ? session?.kind === "admin" : session?.kind === "parent";

@@ -12,6 +12,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!Number.isSafeInteger(studentId) || !Number.isSafeInteger(trialClassId)) {
     return NextResponse.json({ error: "invalid_booking" }, { status: 400 });
   }
+
   const ownsStudent = await new StudentRepository(getPool()).belongsToParent(
     studentId,
     session.parentId,
@@ -19,6 +20,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!ownsStudent) {
     return NextResponse.json({ error: "student_not_found" }, { status: 404 });
   }
+
   try {
     const booking = await new BookingRepository(getPool()).createOrGet(studentId, trialClassId);
     return new Response(null, {

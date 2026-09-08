@@ -25,11 +25,25 @@ function BookingRow({ booking }: { booking: RosterBooking }) {
   );
 }
 
-function BookingSection({ title, bookings }: { title: string; bookings: RosterBooking[] }) {
+function BookingSection({
+  title,
+  bookings,
+}: {
+  title: string;
+  bookings: RosterBooking[];
+}) {
   return (
     <section className={styles.section}>
       <h2 className={styles.sectionTitle}>{title}</h2>
-      {bookings.length === 0 ? <p className={styles.meta}>None.</p> : <ul>{bookings.map((booking) => <BookingRow key={booking.id} booking={booking} />)}</ul>}
+      {bookings.length === 0 ? (
+        <p className={styles.meta}>None.</p>
+      ) : (
+        <ul>
+          {bookings.map((booking) => (
+            <BookingRow key={booking.id} booking={booking} />
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
@@ -68,7 +82,8 @@ export default async function AdminRosterPage({
         <h1 className={styles.title}>{roster.trialClass.subject}</h1>
         <p className={styles.subtitle}>{formatDate(roster.trialClass.startsAt)}</p>
         <p className={styles.status}>
-          {roster.seatsTaken}/{roster.trialClass.capacity} seats taken · consistency {roster.seatsTakenMatches ? "ok" : "mismatch"}
+          {roster.seatsTaken}/{roster.trialClass.capacity} seats taken · consistency{" "}
+          {roster.seatsTakenMatches ? "ok" : "mismatch"}
         </p>
         <BookingSection title="Confirmed roster" bookings={roster.confirmed} />
         <BookingSection title="Seat held" bookings={held} />

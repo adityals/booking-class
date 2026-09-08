@@ -43,7 +43,8 @@ export default async function ClassPage({
             timeZone: "UTC",
           })}
           <br />
-          {trialClass.seatsTaken}/{trialClass.capacity} seats taken · {formatPrice(trialClass.priceCents)}
+          {trialClass.seatsTaken}/{trialClass.capacity} seats taken ·{" "}
+          {formatPrice(trialClass.priceCents)}
         </p>
         {full ? (
           <p className={styles.status}>This class is full.</p>

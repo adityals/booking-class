@@ -20,6 +20,7 @@ export async function GET(
     if (!roster) {
       return Response.json({ error: "Trial class not found" }, { status: 404 });
     }
+
     return Response.json(roster);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

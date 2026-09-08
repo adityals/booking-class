@@ -71,6 +71,7 @@ export async function verifySessionValue(value: string): Promise<Session | null>
     if (!parsed || typeof parsed !== "object") {
       return null;
     }
+
     const candidate = parsed as { kind?: unknown; parentId?: unknown };
     if (candidate.kind === "admin") {
       return { kind: "admin" };

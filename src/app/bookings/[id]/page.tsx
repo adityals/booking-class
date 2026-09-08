@@ -35,7 +35,11 @@ export default async function BookingPage({
         <h1 className={styles.title}>{booking.subject}</h1>
         <p className={styles.status}>Status: {booking.status.replaceAll("_", " ")}</p>
         {booking.status === "pending_payment" || unresolved ? (
-          <form className={styles.form} method="post" action={`/api/v1/bookings/${booking.id}/payments`}>
+          <form
+            className={styles.form}
+            method="post"
+            action={`/api/v1/bookings/${booking.id}/payments`}
+          >
             <label className={styles.field} htmlFor="force">
               Payment result
               <select className={styles.select} id="force" name="force" defaultValue="ok">
