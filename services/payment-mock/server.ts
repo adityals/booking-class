@@ -165,7 +165,9 @@ async function handleCharge(request: IncomingMessage, response: ServerResponse):
   }
 
   const existing = memo[key];
-  if (existing) {
+  // A cached `unknown` is not a final outcome — replaying it would strand the
+  // booking in `seat_held` forever. Fall through so the retry re-runs.
+  if (existing && existing.status !== "unknown") {
     sendJson(response, 200, existing);
     return;
   }
@@ -178,8 +180,14 @@ async function handleCharge(request: IncomingMessage, response: ServerResponse):
   }
 
   const charge = createCharge(selectedMode);
-  memo[key] = charge;
-  persistMemo();
+  // Only definitive outcomes are memoized. An `unknown` (timeout) charge is
+  // unresolved by definition — caching it would make every idempotent retry
+  // replay "unknown" forever and never settle. Leave it out so a retry re-runs
+  // and can produce a real succeeded/declined result.
+  if (charge.status !== "unknown") {
+    memo[key] = charge;
+    persistMemo();
+  }
   if (charge.status === "unknown") {
     const { promise, resolve } = Promise.withResolvers<void>();
     setTimeout(resolve, TIMEOUT_DELAY_MS);
