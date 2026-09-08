@@ -200,20 +200,20 @@ Separate login pages for parent and admin.
 
 Two layers, per Next's own guidance:
 
-- `proxy.ts` (**not** `middleware.ts` — renamed and deprecated in Next 16) does
+- `src/proxy.ts` (**not** `middleware.ts` — renamed and deprecated in Next 16) does
   cookie-only optimistic checks for redirect UX. No database imports. Matcher covers
   `/admin/:path*`, parent pages, and `/api/v1/:path*` **except** the session
   endpoints.
 - `requireParent()` / `requireAdmin()` plus the ownership check
   (`student.parent_id = session.parentId`) are authoritative, at every route handler
-  and page data fetch. Deleting `proxy.ts` must leave every endpoint secure.
+  and page data fetch. Deleting `src/proxy.ts` must leave every endpoint secure.
 
 ## Checks By Tier
 
 | tier | responsibility |
 | --- | --- |
 | UI | affordances only — full classes shown disabled, not hidden |
-| `proxy.ts` | optimistic redirect UX |
+| `src/proxy.ts` | optimistic redirect UX |
 | backend | authorization, ownership, orchestration, compensation |
 | database | capacity `CHECK`, both partial unique indexes, conditional transitions |
 | background job | none automatic — stale-hold release is lazy on the claim path; `unknown` reconciliation is manual |
@@ -287,13 +287,17 @@ and status string-unions are hand-written next to the repositories.
 
 ## Code Style
 
-- Feature-based directories; `infra/` holds the pool and other plumbing.
+- Feature-based directories under `src/`; `src/infra/` holds the pool and other
+  plumbing. Next route files live under `src/app/`.
 - DI by constructor: `PaymentService`, `TrialClassService`, `TrialClassRepository`.
 - All HTTP under `/api/v1`.
 - Every `if` / `else` / loop body uses curly braces, always — no single-line or
   brace-less bodies, even for early returns and guard clauses.
 - Comments explain non-obvious invariants or tradeoffs only; do not narrate obvious
   code or restate the implementation.
+- Keep line lengths readable: break long function calls, SQL fragments, object
+  literals, JSX, and conditional expressions at logical boundaries; do not compress
+  unrelated expressions onto one line.
 
 ## Tests
 
@@ -349,7 +353,7 @@ endpoints → roster → pages → auth → README.
 
 Pre-agreed cut order if time runs out: unit tests → memo file persistence →
 `/control` endpoint → stale-hold release (leave the manual sweep endpoint) → admin
-login page (fall back to an env token) → `proxy.ts`.
+login page (fall back to an env token) → `src/proxy.ts`.
 
 Honest estimate is ~6–7h against a 4h cap, so 4h is a checkpoint, not a wall: stop,
 log actual time spent, and ship with the remaining cut list written down.
