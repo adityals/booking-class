@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireAdmin } from "@/src/auth/server";
 import { getPool } from "@/src/infra/db/pool";
 import { TrialClassReadRepository, type RosterBooking } from "@/src/trial-class/read";
-import { LogoutButton } from "../../../../logout-button";
+import { AppHeader } from "../../../../header";
 import styles from "../../../../app.module.css";
 
 export const dynamic = "force-dynamic";
@@ -63,11 +62,8 @@ export default async function AdminRosterPage({
   const unavailable = roster.operational.filter((booking) => booking.status === "seat_unavailable");
   return (
     <main className={styles.shell}>
+      <AppHeader admin />
       <section className={styles.card}>
-        <div className={styles.actions}>
-          <LogoutButton />
-        </div>
-        <Link href="/admin">← All trial classes</Link>
         <p className={styles.eyebrow}>Roster management</p>
         <h1 className={styles.title}>{roster.trialClass.subject}</h1>
         <p className={styles.subtitle}>{formatDate(roster.trialClass.startsAt)}</p>

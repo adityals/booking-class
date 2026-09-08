@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireParent } from "@/src/auth/server";
+import { StudentRepository } from "@/src/student/repository";
 import { getPool } from "@/src/infra/db/pool";
 import { BookingRepository } from "@/src/booking/repository";
 
@@ -11,11 +12,11 @@ export async function POST(request: Request): Promise<Response> {
   if (!Number.isSafeInteger(studentId) || !Number.isSafeInteger(trialClassId)) {
     return NextResponse.json({ error: "invalid_booking" }, { status: 400 });
   }
-  const ownership = await getPool().query(
-    "SELECT 1 FROM students WHERE id = $1 AND parent_id = $2",
-    [studentId, session.parentId],
+  const ownsStudent = await new StudentRepository(getPool()).belongsToParent(
+    studentId,
+    session.parentId,
   );
-  if (ownership.rows.length === 0) {
+  if (!ownsStudent) {
     return NextResponse.json({ error: "student_not_found" }, { status: 404 });
   }
   try {

@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LogoutButton } from "../logout-button";
 import { requireParent } from "@/src/auth/server";
 import { getPool } from "@/src/infra/db/pool";
 import { TrialClassReadRepository } from "@/src/trial-class/read";
+import { AppHeader } from "../header";
 import styles from "../app.module.css";
 
 export const dynamic = "force-dynamic";
@@ -33,10 +33,8 @@ export default async function ClassesPage() {
   const classes = await new TrialClassReadRepository(getPool()).listClasses();
   return (
     <main className={styles.shell}>
+      <AppHeader />
       <section className={styles.card}>
-        <div className={styles.actions}>
-          <LogoutButton />
-        </div>
         <p className={styles.eyebrow}>Explore science and math</p>
         <h1 className={styles.heading}>Trial classes</h1>
         <ul className={styles.list}>

@@ -20,28 +20,41 @@ export class BookingService {
     if (prepared.kind === "unavailable" || prepared.kind === "settled") {
       return prepared.booking;
     }
-    if (prepared.kind === "existing" && prepared.attempt?.status === "processing") {
-      return prepared.booking;
-    }
-    if (prepared.kind === "existing" && prepared.attempt?.status !== "unknown") {
-      return prepared.booking;
-    }
-    if (!prepared.attempt) {
+    const attempt = prepared.attempt;
+    if (!attempt) {
       throw new Error("payment attempt was not prepared");
     }
-    const attempt = prepared.attempt;
-    let outcome: CaptureOutcome;
-    try {
-      outcome = await this.payments.charge({
-        idempotencyKey: attempt.idempotencyKey,
-        amountCents: attempt.amountCents,
-        bookingId,
-        force,
-      });
-    } catch (error) {
-      outcome = { kind: "unknown", reason: (error as Error).message };
+    // An `unknown` attempt is retried with its original key so the provider replays
+    // the first outcome; a `processing` one is still in flight elsewhere.
+    if (prepared.kind === "existing" && attempt.status !== "unknown") {
+      return prepared.booking;
     }
+    const outcome = await this.payments.charge({
+      idempotencyKey: attempt.idempotencyKey,
+      amountCents: attempt.amountCents,
+      bookingId,
+      force,
+    });
     return this.repository.settleCapture(attempt.id, this.mapOutcome(outcome));
+  }
+
+  /**
+   * Manual recovery: release holds whose capture never resolved, then ask the
+   * provider to settle the ones whose money state is genuinely unknown.
+   */
+  async sweep(): Promise<{ released: number; reconciled: number }> {
+    const released = await this.repository.releaseStaleHolds(null);
+    const pending = await this.repository.listUnknownAttempts();
+    let reconciled = 0;
+    for (const attempt of pending) {
+      const outcome = await this.payments.lookup(attempt.idempotencyKey);
+      if (!outcome || outcome.kind === "unknown") {
+        continue;
+      }
+      await this.repository.settleCapture(attempt.id, this.mapOutcome(outcome));
+      reconciled += 1;
+    }
+    return { released, reconciled };
   }
 
   private mapOutcome(outcome: CaptureOutcome): {

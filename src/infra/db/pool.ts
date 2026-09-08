@@ -1,5 +1,13 @@
-import { Pool } from "pg";
+import { Pool, types } from "pg";
 import type { PoolClient } from "pg";
+
+/**
+ * `pg` hands back `bigint` (OID 20) as a string to protect precision beyond 2^53.
+ * Every bigint here is an identity column on a single internal database, so it can
+ * never reach that range, and leaving them as strings silently breaks every row type
+ * that declares `id: number` — `Number.isSafeInteger` on an id would reject it.
+ */
+types.setTypeParser(20, (value) => Number(value));
 
 let pool: Pool | undefined;
 
@@ -36,15 +44,4 @@ export async function withTransaction<T>(
   } finally {
     client.release();
   }
-}
-
-/** PostgreSQL SQLSTATE for unique_violation. Treated as a race signal, not a bug. */
-export const UNIQUE_VIOLATION = "23505";
-
-export function isUniqueViolation(error: unknown, constraint?: string): boolean {
-  const candidate = error as { code?: string; constraint?: string } | null;
-  if (candidate?.code !== UNIQUE_VIOLATION) {
-    return false;
-  }
-  return constraint === undefined || candidate.constraint === constraint;
 }

@@ -5,7 +5,7 @@ export default function LoginPage() {
   return (
     <main className={styles.shell}>
       <section className={`${styles.card} ${styles.narrow}`}>
-        <p className={styles.eyebrow}>Ottodot trial classes</p>
+        <p className={styles.eyebrow}>Science and math trial classes</p>
         <h1 className={styles.heading}>Parent login</h1>
         <p className={styles.subtitle}>Sign in to choose a child and book a science or math trial.</p>
         <form className={styles.form} action="/api/v1/sessions" method="post">

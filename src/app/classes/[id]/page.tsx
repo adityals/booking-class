@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPool } from "@/src/infra/db/pool";
 import { requireParent } from "@/src/auth/server";
+import { StudentRepository } from "@/src/student/repository";
 import { TrialClassReadRepository } from "@/src/trial-class/read";
-import { LogoutButton } from "../../logout-button";
+import { AppHeader } from "../../header";
 import styles from "../../app.module.css";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +19,7 @@ export default async function ClassPage({
   params: Promise<{ id: string }>;
 }) {
   const session = await requireParent();
-  const students = await getPool().query<{ id: number; name: string }>(
-    "SELECT id, name FROM students WHERE parent_id = $1 ORDER BY id",
-    [session.parentId],
-  );
+  const students = await new StudentRepository(getPool()).listForParent(session.parentId);
   const { id } = await params;
   const trialClass = (await new TrialClassReadRepository(getPool()).listClasses()).find(
     (item) => item.id === Number(id),
@@ -33,10 +31,8 @@ export default async function ClassPage({
   const full = trialClass.availableSeats === 0;
   return (
     <main className={styles.shell}>
+      <AppHeader />
       <section className={`${styles.card} ${styles.narrow}`}>
-        <div className={styles.actions}>
-          <LogoutButton />
-        </div>
         <Link href="/classes">← All trial classes</Link>
         <p className={styles.eyebrow}>Choose a spot</p>
         <h1 className={styles.title}>{trialClass.subject}</h1>
@@ -57,7 +53,7 @@ export default async function ClassPage({
             <label className={styles.field} htmlFor="student_id">
               Choose a child
               <select className={styles.select} id="student_id" name="student_id" required>
-                {students.rows.map((student) => (
+                {students.map((student) => (
                   <option key={student.id} value={student.id}>{student.name}</option>
                 ))}
               </select>

@@ -3,6 +3,16 @@ import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { withTransaction } from "../infra/db/pool";
 import type { Booking, PaymentAttempt } from "../domain/types";
 
+/**
+ * Age past which a hold is stale and an in-flight attempt is presumed abandoned.
+ * Must exceed the payment client timeout, or a slow-but-live charge gets promoted
+ * to `unknown` underneath itself.
+ */
+function staleAfterSeconds(): number {
+  const configured = Number(process.env.HOLD_TTL_SECONDS ?? 30);
+  return Number.isFinite(configured) && configured > 0 ? configured : 30;
+}
+
 interface BookingRow extends QueryResultRow {
   id: number;
   student_id: number;
@@ -100,6 +110,16 @@ export class BookingRepository {
         throw new Error("booking not found");
       }
       const booking = mapBooking(bookingResult.rows[0]);
+      // A request that died between committing the attempt and settling it leaves
+      // `processing` forever, which the in-flight unique index would turn into a
+      // permanent lockout. Age it into `unknown` so the retry replays the same key.
+      await tx.query(
+        `UPDATE payment_attempts
+         SET status = 'unknown', error = COALESCE(error, 'attempt_abandoned')
+         WHERE booking_id = $1 AND status = 'processing'
+           AND created_at < now() - ($2 * interval '1 second')`,
+        [bookingId, staleAfterSeconds()],
+      );
       const existingAttempt = await this.findInFlight(tx, bookingId);
       if (
         booking.status === "confirmed" ||
@@ -115,14 +135,14 @@ export class BookingRepository {
         throw new Error(`booking ${bookingId} is not payable`);
       }
 
-      const claimed = await tx.query(
-        `UPDATE trial_classes
-         SET seats_taken = seats_taken + 1
-         WHERE id = $1 AND seats_taken < capacity
-         RETURNING id`,
-        [booking.trialClassId],
-      );
-      if (claimed.rows.length === 0) {
+      let claimed = await this.claimSeat(tx, booking.trialClassId);
+      if (!claimed) {
+        // The class only *appears* full: a hold whose capture never resolved may be
+        // squatting a seat. Release those, then give the claim exactly one more go.
+        await this.releaseStaleHolds(booking.trialClassId, tx);
+        claimed = await this.claimSeat(tx, booking.trialClassId);
+      }
+      if (!claimed) {
         const unavailable = await tx.query<BookingRow>(
           `UPDATE bookings
            SET status = 'seat_unavailable', updated_at = now()
@@ -186,6 +206,73 @@ export class BookingRepository {
       );
       return this.getBookingAfterUpdate(tx, attempt.booking_id, "payment_failed");
     });
+  }
+
+  /**
+   * Releases holds whose capture never resolved: `trialClassId` null sweeps every
+   * class. A hold with a `processing` or `unknown` attempt is never touched — the
+   * charge may have succeeded, and releasing it would leave a Parent paying for
+   * nothing. Terminal status is `payment_failed`: the Claim succeeded, so
+   * `seat_unavailable` would be a lie, and the Parent may try again.
+   */
+  async releaseStaleHolds(trialClassId: number | null, executor: Pool | PoolClient = this.pool): Promise<number> {
+    const result = await executor.query<{ n: number }>(
+      `WITH stale AS (
+         SELECT b.id, b.trial_class_id
+         FROM bookings b
+         WHERE b.status = 'seat_held'
+           AND b.held_at < now() - ($1 * interval '1 second')
+           AND ($2::bigint IS NULL OR b.trial_class_id = $2::bigint)
+           AND NOT EXISTS (
+             SELECT 1 FROM payment_attempts a
+             WHERE a.booking_id = b.id AND a.status IN ('processing', 'unknown')
+           )
+         ORDER BY b.id
+         FOR UPDATE OF b SKIP LOCKED
+       ),
+       released AS (
+         UPDATE bookings
+         SET status = 'payment_failed', updated_at = now()
+         WHERE id IN (SELECT id FROM stale)
+         RETURNING trial_class_id
+       ),
+       counted AS (
+         SELECT trial_class_id, count(*)::int AS n
+         FROM released
+         GROUP BY trial_class_id
+       )
+       UPDATE trial_classes c
+       SET seats_taken = c.seats_taken - counted.n
+       FROM counted
+       WHERE c.id = counted.trial_class_id
+       RETURNING counted.n`,
+      [staleAfterSeconds(), trialClassId],
+    );
+    return result.rows.reduce((total, row) => total + Number(row.n), 0);
+  }
+
+  /** Holds whose money state is genuinely unknown — only the provider can settle them. */
+  async listUnknownAttempts(): Promise<PaymentAttempt[]> {
+    const result = await this.pool.query<AttemptRow>(
+      `SELECT a.id, a.booking_id, a.status, a.amount_cents, a.idempotency_key,
+              a.provider_ref, a.error, a.created_at, a.settled_at
+       FROM payment_attempts a
+       JOIN bookings b ON b.id = a.booking_id
+       WHERE a.status = 'unknown' AND b.status = 'seat_held'
+       ORDER BY a.id`,
+    );
+    return result.rows.map(mapAttempt);
+  }
+
+  private async claimSeat(tx: PoolClient, trialClassId: number): Promise<boolean> {
+    const claimed = await tx.query(
+      `UPDATE trial_classes
+       SET seats_taken = seats_taken + 1
+       WHERE id = $1 AND seats_taken < capacity
+       RETURNING id`,
+      [trialClassId],
+    );
+    return claimed.rows.length > 0;
   }
 
   private async findInFlight(tx: PoolClient, bookingId: number): Promise<PaymentAttempt | null> {

@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireParent } from "@/src/auth/server";
+import { BookingReadRepository } from "@/src/booking/read-repository";
 import { getPool } from "@/src/infra/db/pool";
-import { LogoutButton } from "../../logout-button";
+import { AppHeader } from "../../header";
 import styles from "../../app.module.css";
 
 export const dynamic = "force-dynamic";
@@ -17,34 +18,23 @@ export default async function BookingPage({
   if (!Number.isSafeInteger(bookingId) || bookingId <= 0) {
     notFound();
   }
-  const result = await getPool().query(
-    `SELECT b.id, b.status, b.amount_cents, c.subject
-     FROM bookings b
-     JOIN students s ON s.id = b.student_id
-     JOIN trial_classes c ON c.id = b.trial_class_id
-     WHERE b.id = $1 AND s.parent_id = $2`,
-    [bookingId, session.parentId],
+  const booking = await new BookingReadRepository(getPool()).findForParent(
+    bookingId,
+    session.parentId,
   );
-  if (result.rows.length === 0) {
+  if (!booking) {
     notFound();
   }
-  const booking = result.rows[0] as {
-    id: number;
-    status: string;
-    amount_cents: number;
-    subject: string;
-  };
+  const unresolved = booking.status === "seat_held" && booking.attemptStatus === "unknown";
   return (
     <main className={styles.shell}>
+      <AppHeader />
       <section className={`${styles.card} ${styles.narrow}`}>
-        <div className={styles.actions}>
-          <LogoutButton />
-        </div>
         <Link href="/classes">← All trial classes</Link>
         <p className={styles.eyebrow}>Booking status</p>
         <h1 className={styles.title}>{booking.subject}</h1>
         <p className={styles.status}>Status: {booking.status.replaceAll("_", " ")}</p>
-        {booking.status === "pending_payment" ? (
+        {booking.status === "pending_payment" || unresolved ? (
           <form className={styles.form} method="post" action={`/api/v1/bookings/${booking.id}/payments`}>
             <label className={styles.field} htmlFor="force">
               Payment result
@@ -55,12 +45,17 @@ export default async function BookingPage({
               </select>
             </label>
             <button className={styles.button} type="submit">
-              Pay ${(booking.amount_cents / 100).toFixed(2)}
+              {unresolved ? "Retry payment" : `Pay $${(booking.amountCents / 100).toFixed(2)}`}
             </button>
           </form>
         ) : null}
-        {booking.status === "seat_held" ? (
+        {booking.status === "seat_held" && !unresolved ? (
           <p className={styles.subtitle}>Payment is in progress. Refresh shortly.</p>
+        ) : null}
+        {unresolved ? (
+          <p className={styles.subtitle}>
+            We did not hear back from the provider. Retrying is safe and reuses the payment attempt.
+          </p>
         ) : null}
       </section>
     </main>

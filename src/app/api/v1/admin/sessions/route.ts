@@ -22,9 +22,3 @@ export async function POST(request: Request): Promise<Response> {
   response.cookies.set(SESSION_COOKIE, await signSession({ kind: "admin" }), cookieOptions);
   return response;
 }
-
-export async function DELETE(request: Request): Promise<Response> {
-  const response = NextResponse.redirect(new URL("/admin/login", request.url), 303);
-  response.cookies.delete(SESSION_COOKIE);
-  return response;
-}

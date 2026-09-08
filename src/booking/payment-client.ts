@@ -1,5 +1,22 @@
 import type { CaptureOutcome, PaymentService } from "../domain/types";
 
+/**
+ * Anything that is not an unambiguous success or decline is `unknown`: guessing on a
+ * money path would either confirm an unpaid Booking or release a paid-for Seat.
+ */
+function toOutcome(body: Record<string, unknown>): CaptureOutcome {
+  if (body.status === "succeeded" && typeof body.providerRef === "string") {
+    return { kind: "succeeded", providerRef: body.providerRef };
+  }
+  if (body.status === "declined") {
+    return {
+      kind: "declined",
+      reason: typeof body.reason === "string" ? body.reason : "payment_declined",
+    };
+  }
+  return { kind: "unknown", reason: String(body.reason ?? "payment_unknown") };
+}
+
 export class HttpPaymentService implements PaymentService {
   constructor(
     private readonly baseUrl = process.env.PAYMENT_SERVICE_URL ?? "http://localhost:4001",
@@ -18,24 +35,24 @@ export class HttpPaymentService implements PaymentService {
         body: JSON.stringify({ bookingId: input.bookingId, amountCents: input.amountCents }),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
-      const body = (await response.json()) as Record<string, unknown>;
-      if (body.status === "succeeded" && typeof body.providerRef === "string") {
-        return { kind: "succeeded", providerRef: body.providerRef };
-      }
-      if (body.status === "declined" && typeof body.reason === "string") {
-        return { kind: "declined", reason: body.reason };
-      }
-      return { kind: "unknown", reason: String(body.reason ?? "payment_unknown") };
+      return toOutcome((await response.json()) as Record<string, unknown>);
     } catch (error) {
       return { kind: "unknown", reason: (error as Error).message };
     }
   }
 
   async lookup(idempotencyKey: string): Promise<CaptureOutcome | null> {
-    const response = await fetch(`${this.baseUrl}/charges/${encodeURIComponent(idempotencyKey)}`);
-    if (response.status === 404) {
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/charges/${encodeURIComponent(idempotencyKey)}`,
+        { signal: AbortSignal.timeout(this.timeoutMs) },
+      );
+      if (response.status === 404) {
+        return null;
+      }
+      return toOutcome((await response.json()) as Record<string, unknown>);
+    } catch {
       return null;
     }
-    return (await response.json()) as CaptureOutcome;
   }
 }

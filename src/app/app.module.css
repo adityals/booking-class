@@ -1,3 +1,23 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(100%, 920px);
+  margin: 0 auto 18px;
+  gap: 18px;
+}
+
+.brand {
+  color: #14213d;
+  font-size: 1.05rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.brand span {
+  color: #3267d6;
+}
+
 .shell {
   min-height: 100vh;
   background: #f4f7fb;

@@ -115,8 +115,12 @@ BEGIN;
 COMMIT;
 ```
 
-No lock is held across a network call. Mutual exclusion between concurrent payment
-submissions comes from the in-flight unique index, not from `FOR UPDATE`.
+No lock is held across a network call. T1 opens by locking the booking row
+(`SELECT … FOR UPDATE`), so two concurrent submissions for the *same* booking
+serialise there and the second reads the first's attempt instead of racing it; the
+in-flight unique index remains the backstop that makes a double charge impossible
+even if that lock were removed. Contention between *different* parents is unaffected —
+they lock different booking rows and meet only at the conditional capacity `UPDATE`.
 
 ## Critical Flow
 
@@ -137,20 +141,19 @@ submissions comes from the in-flight unique index, not from `FOR UPDATE`.
   (`… WHERE id=$1 AND status='seat_held'`). Zero rows means already settled, so a
   replayed request is a no-op.
 - **Avoid double charge** — `UNIQUE (booking_id) WHERE status IN
-  ('processing','unknown')`. A concurrent payment submission gets `23505`, reads the
-  live attempt, and renders "payment in progress — refresh" rather than charging.
+  ('processing','unknown')`. A concurrent payment submission blocks on the booking's
+  row lock, then reads the live attempt and renders "payment in progress — refresh"
+  rather than charging. The index makes the invariant true regardless of the lock.
 - **If payment fails, do not add the child to the roster** — the booking is never
   `confirmed` on a decline, and its seat is released in the same transaction.
 - **Last-seat race** — both parents submit payment; exactly one claim succeeds. The
   loser becomes `seat_unavailable` **without a single provider call**.
 
-`23505` is the PostgreSQL SQLSTATE for `unique_violation` (`err.code` on a `pg`
-error, with `err.constraint` naming the index). It is treated as a **signal, not a
-failure**: checking for an existing row before inserting cannot be race-free, because
-two requests can both read "absent" and both proceed. The unique index is the
-arbiter, `23505` is its verdict, and the loser reads the winner's row. The same code
-would surface on duplicate booking creation, which is why that path uses
-`ON CONFLICT … DO NOTHING` instead — same arbiter, no exception to catch.
+Both duplicate paths are resolved without an exception to catch: booking creation
+uses `ON CONFLICT … DO NOTHING` plus a `SELECT`, and concurrent payment submissions
+serialise on the booking row lock. The partial unique indexes remain the arbiters —
+they are what makes the invariant true rather than merely likely — but no application
+code branches on `23505`.
 
 ## Idempotency
 
@@ -177,16 +180,25 @@ twice. The parent does not lose the seat while the ambiguity is resolved.
 
 Stale holds — a seat held by a booking whose capture never resolved — are recovered
 lazily on the claim path: when a claim returns zero rows, release holds for that class
-older than the payment timeout whose attempt is absent or `failed`, then retry the
+older than `HOLD_TTL_SECONDS` whose attempt is absent or `failed`, then retry the
 claim once. This runs only when a class *appears* full, i.e. only when the leak
-actually harms someone, and never writes on a read path.
+actually harms someone, and never writes on a read path. A released hold becomes
+`payment_failed`, not `seat_unavailable`: its claim succeeded, so the parent may try
+again.
+
+An attempt still `processing` past the same TTL is a request that died between
+committing the attempt and settling it. It is aged into `unknown` on the next payment
+submission, so the in-flight unique index cannot turn a crashed request into a
+permanent lockout; the retry replays the original idempotency key.
 
 Holds whose attempt is `unknown` are **never** released automatically: the charge may
 have succeeded, and releasing the seat would leave a parent charged with nothing.
-They are surfaced on the admin roster as "needs reconciliation" and can be resolved
-manually via `POST /api/v1/internal/sweep-holds`, which uses
-`GET /charges/:idempotency_key` on the provider. Automatic reconciliation is the
-documented next step, not built.
+They are surfaced on the admin roster as "needs reconciliation" and are resolved by
+`POST /api/v1/internal/sweep-holds`, which releases stale holds and then asks the
+provider `GET /charges/:idempotency_key` for each `unknown` attempt, confirming or
+releasing accordingly. A provider that still answers "unknown" leaves the hold alone.
+The endpoint is manual by design; running it on a schedule is the documented next
+step, not built.
 
 ## HTTP Session
 
@@ -216,7 +228,7 @@ Two layers, per Next's own guidance:
 | `src/proxy.ts` | optimistic redirect UX |
 | backend | authorization, ownership, orchestration, compensation |
 | database | capacity `CHECK`, both partial unique indexes, conditional transitions |
-| background job | none automatic — stale-hold release is lazy on the claim path; `unknown` reconciliation is manual |
+| background job | none automatic — stale-hold release is lazy on the claim path; abandoned `processing` attempts age into `unknown` on the next submission; `unknown` reconciliation is the manual sweep endpoint |
 
 ## API
 
@@ -229,20 +241,22 @@ path, and the whole app works without client JavaScript.
 
 | method + path | purpose |
 | --- | --- |
-| `POST`/`DELETE /api/v1/sessions` | parent login / logout |
+| `POST /api/v1/sessions` | parent login |
+| `POST /api/v1/sessions/logout` | parent logout (HTML forms cannot send `DELETE`) |
 | `POST /api/v1/admin/sessions` | admin login |
 | `GET /api/v1/classes` | list with live seat availability |
 | `POST /api/v1/bookings` | create-or-return `pending_payment` |
 | `POST /api/v1/bookings/:id/payments` | claim → capture → confirm \| release |
 | `GET /api/v1/bookings/:id` | booking status |
 | `GET /api/v1/admin/classes/:id/roster` | roster (admin only) |
-| `POST /api/v1/internal/sweep-holds` | manual stale-hold / `unknown` recovery |
+| `POST /api/v1/internal/sweep-holds` | manual stale-hold release + `unknown` reconciliation |
 
 ## Pages
 
 `/login`, `/admin/login`, `/classes`, `/classes/:id`, `/bookings/:id` (renders the
-payment form while `pending_payment`, "payment in progress" while `seat_held`, the
-outcome once terminal), and the admin roster. All `dynamic = 'force-dynamic'`;
+payment form while `pending_payment`, "payment in progress" while `seat_held`, a
+retry button when that hold's attempt is `unknown`, the outcome once terminal), and
+the admin roster. All `dynamic = 'force-dynamic'`;
 database reads are uncached and prerender-blocking, so seat counts would otherwise go
 stale.
 
@@ -312,10 +326,11 @@ test does `TRUNCATE … RESTART IDENTITY CASCADE` + reseed.
   charged), and `seats_taken = COUNT(*) WHERE status IN ('seat_held','confirmed')`.
   A single two-way race passes by luck too often to be a regression test.
 - Other integration cases: duplicate submission converges on one booking; decline
-  releases the seat and leaves capacity restored; `X-Force-Payment: timeout` leaves
-  an `unknown` attempt with the seat still held, and a retry replays the original
-  outcome rather than charging twice; a stale hold is released when a later claim
-  finds the class full.
+  releases the seat and leaves capacity restored; a timeout leaves an `unknown`
+  attempt with the seat still held, and a retry replays the original outcome rather
+  than charging twice; an abandoned `processing` attempt ages into `unknown` instead
+  of locking the booking out; a stale hold is released when a later claim finds the
+  class full; the sweep endpoint releases and reconciles.
 - **Unit, mocked repository** for orchestration branches only: claim fails → no
   provider call at all; decline → release exactly once; `unknown` → hold retained;
   live attempt → reused rather than re-charged.
@@ -361,8 +376,8 @@ log actual time spent, and ship with the remaining cut list written down.
 ## Deliberately Cut
 
 - No refunds anywhere — claim-then-capture means the loser is never charged.
-- Automatic reconciliation of `unknown` attempts against the provider (manual
-  endpoint only).
+- Scheduled reconciliation of `unknown` attempts (the sweep endpoint exists; nothing
+  calls it on a timer).
 - No cancellation, no waitlist, no abandonment expiry (`pending_payment` holds
   nothing, so there is nothing to expire).
 - No cross-class scheduling constraint: a student may book two overlapping trial
