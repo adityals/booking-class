@@ -183,13 +183,21 @@ Manual cases to demonstrate:
 4. Log in as `admin` and inspect the confirmed and operational roster sections.
 5. Stop PostgreSQL and reload a class page to see the 500 error state; restart it and use the retry path.
 
-## Assumptions and tradeoffs
+## Assumptions
 
 - Parents and children are seeded. There is no signup.
 - The admin is an environment credential and has read-only roster access.
-- Claim-before-capture avoids charging a parent who loses the last seat. It can leave a stale held seat after a process failure, so the system provides a manual sweep endpoint.
-- The payment mock persists idempotency results in a local JSON file. A production provider would provide durable charge lookup and scheduled reconciliation.
 - Pages use Next.js `src/app`, route handlers, raw `pg`, and constructor-injected repositories. Postgres runs in Docker; Next.js and the payment mock run on the host.
+
+## Tradeoffs
+
+All of these are the same decision: where the last available seat is consumed.
+
+- **Seat is claimed at payment submission, not at booking creation.** Booking creation stays free, so several parents can hold a `pending_payment` booking for one remaining seat. The loser learns only at submit, with `seat_unavailable`. The alternative, reserving at booking creation, would tell parents earlier but would park the last seat behind an abandoned checkout and force an expiry policy and a waitlist to get it back.
+- **Claim before capture, not capture before claim.** The parent who loses the last seat is never charged, so there is no refund flow. The cost is the reverse failure: a process crash between claim and settlement leaves the seat held with no confirmed booking. Recovery is the manual `POST /api/v1/internal/sweep-holds` endpoint instead of a scheduled reconciliation worker.
+- **The database decides the winner, not the application.** The conditional `UPDATE ... WHERE seats_taken < capacity` plus `CHECK (seats_taken <= capacity)` makes the last seat a single atomic write. No application lock, no read-then-write window, and correctness survives multiple Next.js processes. The cost is that the losing request cannot be queued or retried into the seat; it fails outright.
+- **A capture whose result is `unknown` keeps the seat held.** Holding an ambiguous seat risks stranding the last seat until a sweep runs; releasing it risks a confirmed charge with no seat. The system favors never double-selling a seat over never stranding one.
+- **The payment mock persists idempotency results in a local JSON file.** Enough to make retries of the same last-seat capture safe in this exercise. A production provider would give durable charge lookup and scheduled reconciliation, which is what turns the manual sweep into an automatic one.
 
 ## Deliberate cuts
 
@@ -219,10 +227,6 @@ Track:
 3. Add expiry policy and parent-facing recovery for long-lived holds.
 4. Add authenticated staff accounts and audit logging.
 5. Add end-to-end browser coverage for login, payment, and roster flows.
-
-## Time spent
-
-The implementation exceeded the requested four-hour timebox. Exact elapsed time was not tracked; the README records the scope and remaining production work instead of hiding the overrun.
 
 ## Video walkthrough
 
